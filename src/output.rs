@@ -14,7 +14,7 @@ pub struct Writer {
 }
 
 enum Out {
-    Csv(csv::Writer<Box<dyn Write>>),
+    Csv(Box<csv::Writer<Box<dyn Write>>>),
     Jsonl(Box<dyn Write>),
 }
 
@@ -30,8 +30,16 @@ impl Writer {
             Out::Jsonl(sink)
         } else {
             let mut writer = csv::Writer::from_writer(sink);
-            writer.write_record(["timestamp", "sha", "language", "files", "code", "comments", "blanks"])?;
-            Out::Csv(writer)
+            writer.write_record([
+                "timestamp",
+                "sha",
+                "language",
+                "files",
+                "code",
+                "comments",
+                "blanks",
+            ])?;
+            Out::Csv(Box::new(writer))
         };
         Ok(Self { out })
     }

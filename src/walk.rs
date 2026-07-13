@@ -6,9 +6,9 @@ use gix::ObjectId;
 /// "Oldest-first" is the reversed tip→root first-parent chain
 /// (`git log --first-parent --reverse`); commit timestamps play no part in ordering.
 pub fn first_parent_oldest_first(repo: &gix::Repository, refname: &str) -> Result<Vec<ObjectId>> {
-    let tip = repo.rev_parse_single(refname).with_context(|| {
-        format!("cannot resolve '{refname}' (empty repository or unborn ref?)")
-    })?;
+    let tip = repo
+        .rev_parse_single(refname)
+        .with_context(|| format!("cannot resolve '{refname}' (empty repository or unborn ref?)"))?;
     let commit_id = tip
         .object()
         .context("failed to read the object the ref points at")?

@@ -96,9 +96,10 @@ fn build_fixture() -> Fixture {
 
     git(&root, &["init", "-q", "-b", "main"], 1);
 
-    let record = |root: &Path, model: &BTreeMap<String, (String, Option<LanguageType>)>,
-                      commits: &mut Vec<CommitRec>,
-                      day: u8| {
+    let record = |root: &Path,
+                  model: &BTreeMap<String, (String, Option<LanguageType>)>,
+                  commits: &mut Vec<CommitRec>,
+                  day: u8| {
         commits.push(CommitRec {
             sha: git_stdout(root, &["rev-parse", "HEAD"]),
             timestamp: format!("2024-01-{day:02}T12:00:00Z"),
@@ -109,8 +110,14 @@ fn build_fixture() -> Fixture {
     // c1: Rust + JSON
     write_file(&root, "src/main.rs", MAIN_RS_V1.as_bytes(), false);
     write_file(&root, "config.json", CONFIG_JSON_V1.as_bytes(), false);
-    model.insert("src/main.rs".into(), (MAIN_RS_V1.into(), Some(LanguageType::Rust)));
-    model.insert("config.json".into(), (CONFIG_JSON_V1.into(), Some(LanguageType::Json)));
+    model.insert(
+        "src/main.rs".into(),
+        (MAIN_RS_V1.into(), Some(LanguageType::Rust)),
+    );
+    model.insert(
+        "config.json".into(),
+        (CONFIG_JSON_V1.into(), Some(LanguageType::Json)),
+    );
     git(&root, &["add", "."], 1);
     git(&root, &["commit", "-q", "-m", "c1"], 1);
     record(&root, &model, &mut commits, 1);
@@ -119,9 +126,18 @@ fn build_fixture() -> Fixture {
     write_file(&root, "src/lib.py", LIB_PY.as_bytes(), false);
     write_file(&root, "src/main.rs", MAIN_RS_V2.as_bytes(), false);
     write_file(&root, "nb.ipynb", NOTEBOOK.as_bytes(), false);
-    model.insert("src/lib.py".into(), (LIB_PY.into(), Some(LanguageType::Python)));
-    model.insert("src/main.rs".into(), (MAIN_RS_V2.into(), Some(LanguageType::Rust)));
-    model.insert("nb.ipynb".into(), (NOTEBOOK.into(), Some(LanguageType::Jupyter)));
+    model.insert(
+        "src/lib.py".into(),
+        (LIB_PY.into(), Some(LanguageType::Python)),
+    );
+    model.insert(
+        "src/main.rs".into(),
+        (MAIN_RS_V2.into(), Some(LanguageType::Rust)),
+    );
+    model.insert(
+        "nb.ipynb".into(),
+        (NOTEBOOK.into(), Some(LanguageType::Jupyter)),
+    );
     git(&root, &["add", "."], 2);
     git(&root, &["commit", "-q", "-m", "c2"], 2);
     record(&root, &model, &mut commits, 2);
@@ -139,10 +155,19 @@ fn build_fixture() -> Fixture {
     for d in ["a", "b"] {
         write_file(&root, &format!("{d}/top.py"), TOP_PY.as_bytes(), false);
         write_file(&root, &format!("{d}/sub/gen.py"), GEN_PY.as_bytes(), false);
-        model.insert(format!("{d}/top.py"), (TOP_PY.into(), Some(LanguageType::Python)));
-        model.insert(format!("{d}/sub/gen.py"), (GEN_PY.into(), Some(LanguageType::Python)));
+        model.insert(
+            format!("{d}/top.py"),
+            (TOP_PY.into(), Some(LanguageType::Python)),
+        );
+        model.insert(
+            format!("{d}/sub/gen.py"),
+            (GEN_PY.into(), Some(LanguageType::Python)),
+        );
     }
-    model.insert("bin/run".into(), (BIN_RUN.into(), Some(LanguageType::Python)));
+    model.insert(
+        "bin/run".into(),
+        (BIN_RUN.into(), Some(LanguageType::Python)),
+    );
     model.insert("notes.xyzzy".into(), (String::new(), None));
     git(&root, &["add", "."], 3);
     git(&root, &["commit", "-q", "-m", "c3"], 3);
@@ -167,19 +192,32 @@ fn build_fixture() -> Fixture {
 
     // c5 on main: modify JSON
     write_file(&root, "config.json", CONFIG_JSON_V2.as_bytes(), false);
-    model.insert("config.json".into(), (CONFIG_JSON_V2.into(), Some(LanguageType::Json)));
+    model.insert(
+        "config.json".into(),
+        (CONFIG_JSON_V2.into(), Some(LanguageType::Json)),
+    );
     git(&root, &["add", "."], 6);
     git(&root, &["commit", "-q", "-m", "c5"], 6);
     record(&root, &model, &mut commits, 6);
 
     // c6: merge commit — feature.rs arrives on the first-parent line
-    git(&root, &["merge", "-q", "--no-ff", "feature", "-m", "merge feature"], 7);
-    model.insert("feature.rs".into(), (FEATURE_RS.into(), Some(LanguageType::Rust)));
+    git(
+        &root,
+        &["merge", "-q", "--no-ff", "feature", "-m", "merge feature"],
+        7,
+    );
+    model.insert(
+        "feature.rs".into(),
+        (FEATURE_RS.into(), Some(LanguageType::Rust)),
+    );
     record(&root, &model, &mut commits, 7);
 
     // c7: add a file...
     write_file(&root, "temp.py", TEMP_PY.as_bytes(), false);
-    model.insert("temp.py".into(), (TEMP_PY.into(), Some(LanguageType::Python)));
+    model.insert(
+        "temp.py".into(),
+        (TEMP_PY.into(), Some(LanguageType::Python)),
+    );
     git(&root, &["add", "."], 8);
     git(&root, &["commit", "-q", "-m", "c7"], 8);
     record(&root, &model, &mut commits, 8);
@@ -189,7 +227,11 @@ fn build_fixture() -> Fixture {
     model.remove("temp.py");
     record(&root, &model, &mut commits, 9);
 
-    Fixture { _dir: dir, root, commits }
+    Fixture {
+        _dir: dir,
+        root,
+        commits,
+    }
 }
 
 fn run(repo: &Path, args: &[&str]) -> (String, String) {
@@ -218,7 +260,12 @@ fn excluded(path: &str, excludes: &[&str]) -> bool {
 }
 
 /// Independent reimplementation of the aggregation, with tokei as the line-count oracle.
-fn expected_csv(commits: &[CommitRec], excludes: &[&str], per_language: bool, every: usize) -> String {
+fn expected_csv(
+    commits: &[CommitRec],
+    excludes: &[&str],
+    per_language: bool,
+    every: usize,
+) -> String {
     let config = Config::default();
     let mut out = String::from("timestamp,sha,language,files,code,comments,blanks\n");
     let last = commits.len() - 1;
@@ -233,7 +280,11 @@ fn expected_csv(commits: &[CommitRec], excludes: &[&str], per_language: bool, ev
                 continue;
             }
             let parsed = lang.parse_from_str(content.as_str(), &config);
-            let stats = if *lang == LanguageType::Jupyter { parsed } else { parsed.summarise() };
+            let stats = if *lang == LanguageType::Jupyter {
+                parsed
+            } else {
+                parsed.summarise()
+            };
             let entry = by_lang.entry(lang.name()).or_default();
             entry.0 += 1;
             entry.1 += stats.code as u64;
@@ -241,7 +292,7 @@ fn expected_csv(commits: &[CommitRec], excludes: &[&str], per_language: bool, ev
             entry.3 += stats.blanks as u64;
         }
         let mut total = (0u64, 0u64, 0u64, 0u64);
-        for (_, (f, c, m, b)) in &by_lang {
+        for (f, c, m, b) in by_lang.values() {
             total.0 += f;
             total.1 += c;
             total.2 += m;
@@ -287,12 +338,18 @@ fn excludes_apply_and_cache_stays_correct() {
     // a/ and b/ have identical tree OIDs; only a/sub must be pruned.
     let args = ["--per-language", "-e", "a/sub", "-e", "notes.xyzzy"];
     let (cached, _) = run(&fx.root, &args);
-    assert_eq!(cached, expected_csv(&fx.commits, &["a/sub", "notes.xyzzy"], true, 1));
+    assert_eq!(
+        cached,
+        expected_csv(&fx.commits, &["a/sub", "notes.xyzzy"], true, 1)
+    );
 
     let mut no_cache_args = args.to_vec();
     no_cache_args.push("--no-cache");
     let (uncached, _) = run(&fx.root, &no_cache_args);
-    assert_eq!(cached, uncached, "cache-on and cache-off output must be byte-identical");
+    assert_eq!(
+        cached, uncached,
+        "cache-on and cache-off output must be byte-identical"
+    );
 }
 
 #[test]
@@ -342,7 +399,11 @@ fn jsonl_mirrors_csv_fields() {
 fn ref_flag_walks_annotated_and_lightweight_tags() {
     let fx = build_fixture();
     let target = fx.commits[3].sha.clone();
-    git(&fx.root, &["tag", "-a", "v-mid", "-m", "midpoint", &target], 10);
+    git(
+        &fx.root,
+        &["tag", "-a", "v-mid", "-m", "midpoint", &target],
+        10,
+    );
     git(&fx.root, &["tag", "light", &target], 10);
     let expected = expected_csv(&fx.commits[..4], &[], false, 1);
     for tag in ["v-mid", "light"] {
@@ -395,8 +456,13 @@ fn shallow_clone_warns_and_stops_at_boundary() {
 fn jupyter_top_level_already_includes_cells() {
     let config = Config::default();
     let plain = LanguageType::Jupyter.parse_from_str(NOTEBOOK, &config);
-    assert!(plain.code > 0, "fixture notebook must be parseable by tokei");
-    let folded = LanguageType::Jupyter.parse_from_str(NOTEBOOK, &config).summarise();
+    assert!(
+        plain.code > 0,
+        "fixture notebook must be parseable by tokei"
+    );
+    let folded = LanguageType::Jupyter
+        .parse_from_str(NOTEBOOK, &config)
+        .summarise();
     // if this ever fails, tokei changed parse_jupyter and stats.rs's special case
     // (and this model's) should be re-examined
     assert_eq!(folded.code, 2 * plain.code);

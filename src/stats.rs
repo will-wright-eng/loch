@@ -149,7 +149,11 @@ impl<'repo> Counter<'repo> {
         Ok(total)
     }
 
-    fn stats_blob(&mut self, name: &BString, oid: ObjectId) -> Result<Option<(LanguageType, Counts)>> {
+    fn stats_blob(
+        &mut self,
+        name: &BString,
+        oid: ObjectId,
+    ) -> Result<Option<(LanguageType, Counts)>> {
         let lang = match self.detect_language(name, oid)? {
             Some(lang) => lang,
             None => {
@@ -166,7 +170,9 @@ impl<'repo> Counter<'repo> {
                 return Ok(Some((lang, *counts)));
             }
             if let Some(&huge) = self.class_cache.get(&oid) {
-                debug_assert!(self.skipped_huge.contains(&oid) || self.skipped_binary.contains(&oid));
+                debug_assert!(
+                    self.skipped_huge.contains(&oid) || self.skipped_binary.contains(&oid)
+                );
                 let _ = huge;
                 return Ok(None);
             }

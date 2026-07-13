@@ -86,10 +86,8 @@ fn run(args: Args) -> Result<()> {
         eprintln!("warning: shallow clone — history is truncated at the shallow boundary");
     }
 
-    let mut writer = output::Writer::new(
-        matches!(args.format, Format::Jsonl),
-        args.output.as_deref(),
-    )?;
+    let mut writer =
+        output::Writer::new(matches!(args.format, Format::Jsonl), args.output.as_deref())?;
     let mut counter = stats::Counter::new(&repo, &args.exclude, !args.no_cache);
 
     let last = commits.len() - 1;
