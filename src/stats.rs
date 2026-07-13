@@ -325,7 +325,7 @@ impl<'repo> Counter<'repo> {
         );
         if unknown + binary + huge > 0 {
             eprintln!(
-                "repo-stats: skipped {unknown} unrecognized, {binary} binary, {huge} huge (>{HUGE_BLOB_LIMIT} bytes) unique blobs"
+                "loch: skipped {unknown} unrecognized, {binary} binary, {huge} huge (>{HUGE_BLOB_LIMIT} bytes) unique blobs"
             );
         }
     }

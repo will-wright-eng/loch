@@ -1,4 +1,4 @@
-# Design Doc: `repo-stats` — Per-Commit Codebase Statistics via gix + tokei
+# Design Doc: `loch` — Per-Commit Codebase Statistics via gix + tokei
 
 **Status:** Draft · **Scope:** Prototype · **Language:** Rust (2021 edition)
 
@@ -6,7 +6,7 @@
 
 ## 1. Summary
 
-`repo-stats` is a small CLI tool that walks the first-parent history of a git branch and emits per-commit codebase statistics (files, lines of code, comments, blanks — broken down by language) without ever materializing a working tree. It reads blobs directly from the object database via [gix](https://github.com/GitoxideLabs/gitoxide) and counts them in memory with [tokei](https://github.com/XAMPPRocky/tokei) used as a library.
+`loch` (**LOC** + **h**istory) is a small CLI tool that walks the first-parent history of a git branch and emits per-commit codebase statistics (files, lines of code, comments, blanks — broken down by language) without ever materializing a working tree. It reads blobs directly from the object database via [gix](https://github.com/GitoxideLabs/gitoxide) and counts them in memory with [tokei](https://github.com/XAMPPRocky/tokei) used as a library.
 
 The key idea that makes full-history analysis fast is **memoizing statistics on git object IDs**. Because git storage is content-addressed, any directory (tree) or file (blob) that is unchanged between two commits has the same OID. Stats are computed recursively per tree and cached, so each commit after the first only pays for the paths that actually changed.
 
@@ -98,12 +98,12 @@ Path context also means tree traversal must carry the entry name down to blob co
 
 Extensionless files (e.g. `bin/setup`) are detected by matching the blob's first line against tokei's shebang table, mirroring the tokei CLI so the §9 cross-check holds. `LanguageType::from_path` must never be handed a bare entry name for this — its shebang fallback opens the path on the local filesystem. Detection therefore remains a function of entry filename + blob bytes only, which keeps both the tree-OID and `(blob_oid, lang)` cache keys sound.
 
-`parse_from_str` returns `CodeStats` with nested per-language stats for embedded code (JS/CSS inside HTML, fenced blocks in Markdown). These are folded into the path-detected container language via `CodeStats::summarise()`; redistribution to child languages is future work. Exception: tokei's Jupyter parser already includes cell stats in its top-level counts, so `.ipynb` results are taken as-is — folding again would double-count every notebook line (the tokei CLI's own grand total exhibits exactly that doubling; repo-stats deliberately reports true line counts instead).
+`parse_from_str` returns `CodeStats` with nested per-language stats for embedded code (JS/CSS inside HTML, fenced blocks in Markdown). These are folded into the path-detected container language via `CodeStats::summarise()`; redistribution to child languages is future work. Exception: tokei's Jupyter parser already includes cell stats in its top-level counts, so `.ipynb` results are taken as-is — folding again would double-count every notebook line (the tokei CLI's own grand total exhibits exactly that doubling; loch deliberately reports true line counts instead).
 
 ## 5. CLI Interface
 
 ```
-repo-stats [OPTIONS] [REPO_PATH]
+loch [OPTIONS] [REPO_PATH]
 
 OPTIONS:
   -r, --ref <REF>            Branch/ref to walk [default: HEAD]
@@ -175,7 +175,7 @@ Prototype performance target: full history of a 50k-commit, 1M-unique-blob repo 
 ## 9. Testing Plan
 
 1. **Golden test:** construct a tiny fixture repo in a tempdir (via `gix` or shelling out to `git`) with known file contents across ~10 commits including a merge and a revert; assert exact CSV output.
-2. **Cross-check:** on a real repo, compare the final commit's `TOTAL` row against `tokei --hidden --no-ignore` run on a fresh checkout of that SHA, with no `tokei.toml`/`.tokeirc` on tokei's config lookup path. The flags matter: stock tokei skips hidden files/dirs (`.github/` alone breaks file counts) and honors ignore files, while repo-stats counts everything committed. Zero tolerance applies to the `TOTAL` row on a checkout free of symlinked sources, > 10 MB text files, invalid UTF-8 (the lossy-UTF-8 case allows ±1 line, per §8), and `.ipynb` notebooks (repo-stats corrects a double-count present in tokei's own notebook totals, §4.3, so those legitimately differ). Per-language rows are informational only — tokei's CLI reports embedded code nested under child languages while repo-stats folds it into the container language (§4.3).
+2. **Cross-check:** on a real repo, compare the final commit's `TOTAL` row against `tokei --hidden --no-ignore` run on a fresh checkout of that SHA, with no `tokei.toml`/`.tokeirc` on tokei's config lookup path. The flags matter: stock tokei skips hidden files/dirs (`.github/` alone breaks file counts) and honors ignore files, while loch counts everything committed. Zero tolerance applies to the `TOTAL` row on a checkout free of symlinked sources, > 10 MB text files, invalid UTF-8 (the lossy-UTF-8 case allows ±1 line, per §8), and `.ipynb` notebooks (loch corrects a double-count present in tokei's own notebook totals, §4.3, so those legitimately differ). Per-language rows are informational only — tokei's CLI reports embedded code nested under child languages while loch folds it into the container language (§4.3).
 3. **Cache-correctness:** run with `--no-cache` (hidden flag; disables both tree and blob caches, reproducing the M2 baseline) and diff outputs — must be byte-identical, including with `--exclude` patterns of depth > 1.
 4. **Smoke perf:** time a full run on a medium public repo (e.g. tokei's own repo) in CI; assert an upper bound.
 
@@ -198,7 +198,7 @@ Roughly a 3-day prototype for someone comfortable in Rust, with M1–M3 deliveri
 - Language-category tagging for `TOTAL` filtering (hand-maintained language→category map, or a `--no-data` deny-list), since tokei exposes no category API.
 - Redistribute embedded-language stats (JS in HTML, Markdown fences) to child-language rows instead of folding into the container.
 - `--all-parents` mode and per-directory rollups (stats per top-level directory over time).
-- Plotting helper (`repo-stats plot stats.csv`) or a documented pandas/vega recipe.
+- Plotting helper (`loch plot stats.csv`) or a documented pandas/vega recipe.
 
 ## 12. Open Questions
 

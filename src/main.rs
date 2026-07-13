@@ -9,8 +9,8 @@ use clap::{Parser, ValueEnum};
 
 #[derive(Parser)]
 #[command(
-    name = "repo-stats",
-    about = "Per-commit codebase statistics via gix + tokei, without materializing a working tree",
+    name = "loch",
+    about = "Per-commit codebase statistics (LOC history) via gix + tokei, without materializing a working tree",
     version
 )]
 struct Args {

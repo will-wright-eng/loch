@@ -1,9 +1,12 @@
 [package]
-name = "repo-stats"
+# "loch" = LOC + history. The crates.io name is squatted by a dormant 2019 crate,
+# so if this is ever published: rename the package to loch-cli and add
+# [[bin]] name = "loch" to keep the binary name.
+name = "loch"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
-description = "Per-commit codebase statistics via gix + tokei, without materializing a working tree"
+description = "Per-commit codebase statistics (LOC history) via gix + tokei, without materializing a working tree"
 
 [dependencies]
 anyhow = "1"

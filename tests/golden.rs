@@ -235,7 +235,7 @@ fn build_fixture() -> Fixture {
 }
 
 fn run(repo: &Path, args: &[&str]) -> (String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_repo-stats"))
+    let out = Command::new(env!("CARGO_BIN_EXE_loch"))
         .arg(repo)
         .args(args)
         .output()
@@ -416,7 +416,7 @@ fn ref_flag_walks_annotated_and_lightweight_tags() {
 fn empty_repo_exits_one_with_clean_message() {
     let dir = tempfile::tempdir().unwrap();
     git(dir.path(), &["init", "-q", "-b", "main"], 1);
-    let out = Command::new(env!("CARGO_BIN_EXE_repo-stats"))
+    let out = Command::new(env!("CARGO_BIN_EXE_loch"))
         .arg(dir.path())
         .output()
         .unwrap();

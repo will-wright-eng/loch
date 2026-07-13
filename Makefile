@@ -1,4 +1,4 @@
-# Development workflow for repo-stats. All targets are phony (no file outputs);
+# Development workflow for loch. All targets are phony (no file outputs);
 # `make` alone prints this list.
 #
 # NOTE: Cargo.lock intentionally pins home/time/human_format below their latest
@@ -9,7 +9,7 @@
 .DEFAULT_GOAL := help
 
 ARGS ?=
-PERF_REPO ?= /tmp/repo-stats-perf/tokei
+PERF_REPO ?= /tmp/loch-perf/tokei
 
 .PHONY: help check build release test fmt fmt-check lint run install doc clean perf ci
 
@@ -19,10 +19,10 @@ help: ## Show available targets
 check: ## Type-check without producing a binary (fastest feedback)
 	cargo check --all-targets
 
-build: ## Compile a debug binary (target/debug/repo-stats)
+build: ## Compile a debug binary (target/debug/loch)
 	cargo build
 
-release: ## Compile an optimized binary (target/release/repo-stats)
+release: ## Compile an optimized binary (target/release/loch)
 	cargo build --release
 
 test: ## Run the full test suite (unit + integration)
@@ -40,7 +40,7 @@ lint: ## Run clippy, treating warnings as errors
 run: ## Run the debug binary; pass flags via ARGS, e.g. make run ARGS="-n 10 --per-language"
 	cargo run -- $(ARGS)
 
-install: ## Install repo-stats into ~/.cargo/bin
+install: ## Install loch into ~/.cargo/bin
 	cargo install --path . --locked
 
 doc: ## Build and open API docs for this crate only
@@ -51,6 +51,6 @@ clean: ## Delete the target/ directory
 
 perf: release ## Time a full-history run against tokei's repo (clones it on first use)
 	@test -d $(PERF_REPO) || git clone --quiet https://github.com/XAMPPRocky/tokei $(PERF_REPO)
-	/usr/bin/time -p ./target/release/repo-stats $(PERF_REPO) -o /dev/null
+	/usr/bin/time -p ./target/release/loch $(PERF_REPO) -o /dev/null
 
 ci: fmt-check lint test ## Everything a CI gate should run
