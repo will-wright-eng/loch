@@ -1,0 +1,18 @@
+[package]
+name = "repo-stats"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Per-commit codebase statistics via gix + tokei, without materializing a working tree"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+csv = "1"
+gix = "=0.85.0"
+serde_json = "1"
+tempfile = "3"
+time = { version = "0.3", features = ["formatting"] }
+tokei = "=14.0.0"
+
+[dev-dependencies]
