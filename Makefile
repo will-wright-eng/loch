@@ -9,9 +9,10 @@
 .DEFAULT_GOAL := help
 
 ARGS ?=
+REPO ?= .
 PERF_REPO ?= /tmp/loch-perf/tokei
 
-.PHONY: help check build release test fmt fmt-check lint run install doc clean perf ci
+.PHONY: help check build release test fmt fmt-check lint run install doc clean perf plot ci
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -52,5 +53,9 @@ clean: ## Delete the target/ directory
 perf: release ## Time a full-history run against tokei's repo (clones it on first use)
 	@test -d $(PERF_REPO) || git clone --quiet https://github.com/XAMPPRocky/tokei $(PERF_REPO)
 	/usr/bin/time -p ./target/release/loch $(PERF_REPO) -o /dev/null
+
+plot: release ## Chart a repo's language history: make plot REPO=/path/to/repo
+	./target/release/loch $(REPO) --per-language -o loch.csv
+	./scripts/loch_plot.py loch.csv
 
 ci: fmt-check lint test ## Everything a CI gate should run
