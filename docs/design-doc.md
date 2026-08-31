@@ -1,6 +1,6 @@
 # Design Doc: `loch` — Per-Commit Codebase Statistics via gix + tokei
 
-**Status:** Draft · **Scope:** Prototype · **Language:** Rust (2021 edition)
+**Status:** Implemented (prototype) · **Scope:** Prototype · **Language:** Rust (2021 edition)
 
 ---
 
@@ -88,7 +88,7 @@ Correctness note: every commit's totals are computed from its full tree, so merg
 
 **Excludes vs. the tree cache.** `--exclude` makes stats path-dependent, and the same tree OID can legitimately appear at both an excluded and a non-excluded path — so a naive OID-keyed cache would silently return filtered totals at the wrong path. Entries are pruned during traversal by repo-root-relative path, and the tree cache is bypassed (neither read nor written) for any tree whose path is a proper prefix of an exclude pattern; every other subtree keeps the plain OID key. With no excludes this degenerates to the pseudocode above, and cache-on vs. cache-off output stays byte-identical (test 9.3) in all cases.
 
-**Skips are memoized too.** Binary and huge blobs are cached as zero-stat entries under the same `(oid, lang)` key, preserving the O(unique blobs) cost claim even when a large binary sits next to hot source files. The > 10 MB guard reads the object header (size only) before fetching bytes. The stderr summary reports *unique* skipped blobs by reason (unknown extension / binary / huge) — per-commit skip counts would be cache-dependent and meaningless.
+**Skips are memoized too.** Binary and huge blobs are remembered in a separate classification cache keyed on blob OID alone — the NUL sniff and the size guard depend only on content, never on the path-derived language — so each costs one lookup per unique blob however many paths reach it, preserving the O(unique blobs) cost claim even when a large binary sits next to hot source files. Text blobs land in the `(oid, lang)` parse cache. The > 10 MB guard reads the object header (size only) before fetching bytes. The stderr summary reports *unique* skipped blobs by reason (unknown extension / binary / huge) — per-commit skip counts would be cache-dependent and meaningless.
 
 ### 4.3 Language detection nuance
 
@@ -109,7 +109,7 @@ OPTIONS:
   -r, --ref <REF>            Branch/ref to walk [default: HEAD]
   -f, --format <FMT>         csv | jsonl [default: csv]
   -o, --output <FILE>        Output path [default: stdout]
-  -e, --exclude <PREFIX>...  Path prefixes to skip (e.g. vendor/ node_modules/)
+  -e, --exclude <PREFIX>     Path prefix to skip; repeat per prefix (-e vendor -e node_modules)
   -n, --every <N>            Sample every Nth commit [default: 1]
       --per-language         Emit per-language rows (default: totals only)
       --object-cache-mb <N>  gix object decode cache size [default: 256]
@@ -140,7 +140,7 @@ JSONL mirrors the same fields, one object per row. Rows stream as they are compu
 
 | Crate | Purpose | Notes |
 |---|---|---|
-| `gix` | Repo open, rev walk, tree/blob access | API churns between versions — pinned to **`=0.85.0`** (MSRV 1.85). Verified against docs.rs: `rev_walk(..).first_parent_only()`, `Repository::object_cache_size()`, ODB blob access all present; no reverse/oldest-first sort mode (collect + reverse instead). |
+| `gix` | Repo open, rev walk, tree/blob access | API churns between versions — pinned to **`=0.85.0`**. Crate MSRV is **1.87**: gix needs 1.85, and the test suite uses `std::io::pipe` (stable since 1.87). Verified against docs.rs: `rev_walk(..).first_parent_only()`, `Repository::object_cache_size()`, ODB blob access all present; no reverse/oldest-first sort mode (collect + reverse instead). |
 | `tokei` | Language detection + line counting | Pinned to **`=14.0.0`** (stable; 13.0.0 ended the multi-year alpha series in Nov 2025). `LanguageType::from_path` and `parse_from_str` both take a `&tokei::Config` — one shared `Config::default()` is used everywhere; `tokei.toml`/`.tokeirc` are never read. |
 | `clap` (derive) | CLI | |
 | `serde` / `csv` / `serde_json` | Output | |
@@ -170,22 +170,38 @@ Prototype performance target: full history of a 50k-commit, 1M-unique-blob repo 
 | Huge blobs (> 10 MB) | Skip and warn — likely generated/vendored; avoids pathological parse times. |
 | Shallow clones | Walk stops at the shallow boundary; warn that history is truncated. |
 | Committer time outside RFC 3339 (year > 9999 or < 0) | Clamp to the 0000/9999 bounds, warn on stderr, keep emitting. |
-| Pathologically deep trees (hand-crafted repos) | Traversal runs on a 256 MiB stack so depth is bounded by repo size, not the 8 MiB default. |
+| Pathologically deep trees (hand-crafted repos) | Traversal runs on a 256 MiB stack so depth is bounded by repo size, not the 8 MiB default (a debug build overflows the default between depth 2,500 and 5,000). |
+| Broken pipe on stdout (`loch \| head`) | Exit 0 silently (ripgrep convention); every other error still exits 1 with a message. |
 
 ## 9. Testing Plan
 
 1. **Golden test:** construct a tiny fixture repo in a tempdir (via `gix` or shelling out to `git`) with known file contents across ~10 commits including a merge and a revert; assert exact CSV output.
-2. **Cross-check:** on a real repo, compare the final commit's `TOTAL` row against `tokei --hidden --no-ignore` run on a fresh checkout of that SHA, with no `tokei.toml`/`.tokeirc` on tokei's config lookup path. The flags matter: stock tokei skips hidden files/dirs (`.github/` alone breaks file counts) and honors ignore files, while loch counts everything committed. Zero tolerance applies to the `TOTAL` row on a checkout free of symlinked sources, > 10 MB text files, invalid UTF-8 (the lossy-UTF-8 case allows ±1 line, per §8), and `.ipynb` notebooks (loch corrects a double-count present in tokei's own notebook totals, §4.3, so those legitimately differ). Per-language rows are informational only — tokei's CLI reports embedded code nested under child languages while loch folds it into the container language (§4.3).
+2. **Cross-check:** on a real repo, compare the final commit's `TOTAL` row against `tokei --hidden --no-ignore` run on a fresh checkout of that SHA, with no `tokei.toml`/`.tokeirc` on tokei's config lookup path. The flags matter: stock tokei skips hidden files/dirs (`.github/` alone breaks file counts) and honors ignore files, while loch counts everything committed. Zero tolerance applies to the `TOTAL` row on a checkout free of symlinked sources, > 10 MB text files, invalid UTF-8 (the lossy-UTF-8 case allows ±1 line, per §8), and `.ipynb` notebooks (loch corrects a double-count present in tokei's own notebook totals, §4.3, so those legitimately differ — `scripts/cross_check.sh` subtracts tokei's notebook child rows to restore zero tolerance). Per-language rows are informational only — tokei's CLI reports embedded code nested under child languages while loch folds it into the container language (§4.3).
 3. **Cache-correctness:** run with `--no-cache` (hidden flag; disables both tree and blob caches, reproducing the M2 baseline) and diff outputs — must be byte-identical, including with `--exclude` patterns of depth > 1.
-4. **Smoke perf:** time a full run on a medium public repo (e.g. tokei's own repo) in CI; assert an upper bound.
+4. **Smoke perf:** time a full run on a medium public repo (e.g. tokei's own repo) in CI; assert an upper bound *and* a minimum memoization speedup over `--no-cache` — on a medium repo an absolute bound alone cannot tell a broken cache from a slow runner (`scripts/perf.sh`).
+
+### 9.1 Results (2026-08-30)
+
+| Check | Target | Result |
+|---|---|---|
+| Golden (1) | fixture repo, 8 first-parent commits incl. merge and revert | 15 integration tests pass, covering the §8 rows: invalid UTF-8, timestamp clamp, empty tree, 20,000-deep tree, broken pipe |
+| Cross-check (2) | loch `f9c9f3f` | `TOTAL` 10 files, 1193/455/252 — exact match with `tokei --hidden --no-ignore` |
+| Cross-check (2) | tokei `fa44e51` | `TOTAL` 249 files, 11215/3759/2373 — exact match once tokei's Jupyter child rows (528/333/115) are subtracted; file counts matched before adjustment |
+| Cache-correctness (3) | fixture, with and without `--exclude a/sub` | byte-identical |
+| Smoke perf (4) | tokei `fa44e51`, 1,059 first-parent commits | cached 0.22 s (best of 3) vs `--no-cache` 3.3–4.0 s ⇒ 8–18×; `make perf` asserts ≤ 20 s and ≥ 5× |
+| Larger data point | local repo, 4,920 first-parent commits, 75k packed objects | cached 4.6 s vs `--no-cache` 116.7 s (25×) |
+
+`make validate` runs (2) on both repos and (4); CI runs it on every push (`.github/workflows/ci.yml`). The §7 target (50k commits / 1M blobs < 60 s) is still unmeasured — no repo of that size was at hand; run `make perf PERF_REPO=<path> PERF_SHA=<sha>` against one.
+
+The cross-check materializes the commit through a throwaway index (`git read-tree` + `checkout-index`), which never touches the source repo's index or working tree and, unlike `git clone`, also works from a shallow source such as a CI checkout. tokei runs with `HOME`, `XDG_CONFIG_HOME` and the cwd pointed at an empty directory, because tokei 14.0.0 reads `tokei.toml`/`.tokeirc` from exactly those three places and never from the target.
 
 ## 10. Milestones
 
-1. **M1 — Walking skeleton (½ day):** open repo, first-parent walk, print `timestamp,sha` per commit.
-2. **M2 — Counting (1 day):** tree recursion + blob counting, no caching; correct output on the fixture repo.
-3. **M3 — Memoization (½ day):** add tree/blob caches; verify identical output; measure speedup.
-4. **M4 — Polish (½ day):** excludes, sampling, JSONL, binary/huge-blob guards, stderr summary.
-5. **M5 — Validation (½ day):** cross-check vs tokei-on-checkout; perf smoke test.
+1. **M1 — Walking skeleton (½ day, done 2026-07-13):** open repo, first-parent walk, print `timestamp,sha` per commit.
+2. **M2 — Counting (1 day, done 2026-07-13):** tree recursion + blob counting, no caching; correct output on the fixture repo.
+3. **M3 — Memoization (½ day, done 2026-07-13):** add tree/blob caches; verify identical output; measure speedup.
+4. **M4 — Polish (½ day, done 2026-07-13):** excludes, sampling, JSONL, binary/huge-blob guards, stderr summary.
+5. **M5 — Validation (½ day, done 2026-08-30):** cross-check vs tokei-on-checkout; perf smoke test.
 
 Roughly a 3-day prototype for someone comfortable in Rust, with M1–M3 delivering the interesting result.
 

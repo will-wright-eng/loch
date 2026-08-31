@@ -1,6 +1,6 @@
 # Implementation Plan: Closing the `loch` Design-Doc Gaps
 
-**Status:** Proposed · **Date:** 2026-08-30 · **Companion:** [design-doc.md](design-doc.md) · **Estimate:** ~1 day
+**Status:** Implemented 2026-08-30 (see §10) · **Date:** 2026-08-30 · **Companion:** [design-doc.md](design-doc.md) · **Estimate:** ~1 day
 
 ---
 
@@ -333,7 +333,22 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 | Deep-tree test slow from 20k loose objects | gix writes loose objects quickly (~1 s for 20k); if it becomes a problem, write into a packfile or lower `N` to the smallest value that still overflows the default stack. |
 | `std::io::pipe` on Windows | Design §3 excludes Windows testing; `From<PipeWriter> for Stdio` is implemented on all platforms regardless. |
 
-## 10. References
+## 10. Implementation Notes (2026-08-30)
+
+All five phases landed. Deviations from the plan above, with the reason each was made:
+
+| Plan said | Implemented | Why |
+|---|---|---|
+| Fresh checkout via `git clone --shared` + detached checkout (2.1, §7) | `git read-tree` + `checkout-index` through a throwaway `GIT_INDEX_FILE` | git refuses to clone *from* a shallow repository, which is exactly what a default CI checkout is; the temp-index route also never touches the source index or worktree |
+| Notebooks switch the cross-check to "tolerance off" (2.1) | Script subtracts tokei's Jupyter child rows from its `Total` and compares at zero tolerance | On tokei's own repo the whole delta (528/333/115) was exactly those rows, so the adjustment turns an informational run into a real assertion |
+| Absolute bound only, whole-second `date +%s` timing (3.1) | `scripts/perf.sh`: best-of-3 cached run in ms (perl `Time::HiRes`) plus a `--no-cache` run; asserts `PERF_MAX_SECONDS` (20) **and** `PERF_MIN_SPEEDUP` (5×) | Measured 0.22 s cached vs 4 s uncached on the tokei repo — an absolute bound loose enough for CI could never notice a broken cache; the ratio can |
+| `PERF_MAX_SECONDS` calibrated at 3× the first CI run (3.3) | Set to 20 s ahead of the first CI run | With the speedup floor doing the real work, the absolute bound only needs to catch gross regressions; revisit after the first CI run |
+| Deep-tree depth "raise `N` until it fails" (4.4) | Kept 20,000; measured that a debug build without the worker thread overflows between 2,500 and 5,000 | Gives ~4–8× margin so the test stays meaningful for release-profile frames; costs ~8 s |
+| Item 0.1 (`git add` the doc move) | Already committed as `f9c9f3f` before Phase 0 started | — |
+
+Recorded results live in design-doc §9.1. Still open after this pass: the §7 large-repo target (needs a 50k-commit repo), the CI-side perf calibration (needs one run on GitHub Actions), and the deferred items in §8.
+
+## 11. References
 
 - [design-doc.md](design-doc.md) — the requirements this plan implements
 - [gix 0.85.0 — `Repository::object_cache_size`](https://docs.rs/gix/0.85.0/gix/struct.Repository.html#method.object_cache_size)
