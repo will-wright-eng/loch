@@ -345,6 +345,7 @@ All five phases landed. Deviations from the plan above, with the reason each was
 | `PERF_MAX_SECONDS` calibrated at 3× the first CI run (3.3) | Set to 20 s ahead of the first CI run | With the speedup floor doing the real work, the absolute bound only needs to catch gross regressions; revisit after the first CI run |
 | Deep-tree depth "raise `N` until it fails" (4.4) | Kept 20,000; measured that a debug build without the worker thread overflows between 2,500 and 5,000 | Gives ~4–8× margin so the test stays meaningful for release-profile frames; costs ~8 s |
 | Item 0.1 (`git add` the doc move) | Already committed as `f9c9f3f` before Phase 0 started | — |
+| Workflow sketch in 3.2 (`@v4`/`@v2` tags, `dtolnay/rust-toolchain`, default permissions) | Hardened with zizmor 1.29: every action pinned to a commit SHA with a version comment, `permissions: {}` at the workflow level and `contents: read` per job, `persist-credentials: false` on checkout, a workflow `concurrency` group, and plain `rustup` steps instead of the toolchain action; `.github/dependabot.yml` keeps the SHA pins current. Clean at `--persona pedantic`, offline and online | zizmor flagged 21 findings on the sketch; SHA pins and least-privilege tokens are the standard mitigations for action supply-chain and token-exfiltration risk |
 
 Recorded results live in design-doc §9.1. Still open after this pass: the §7 large-repo target (needs a 50k-commit repo), the CI-side perf calibration (needs one run on GitHub Actions), and the deferred items in §8.
 
@@ -358,5 +359,6 @@ Recorded results live in design-doc §9.1. Still open after this pass: the §7 l
 - [`std::io::pipe`](https://doc.rust-lang.org/std/io/fn.pipe.html) — stable since Rust 1.87
 - [ripgrep broken-pipe handling](https://github.com/BurntSushi/ripgrep/blob/master/crates/core/main.rs) — exit 0 on `BrokenPipe`
 - [clap derive — `value_name`](https://docs.rs/clap/latest/clap/_derive/index.html#arg-attributes)
-- [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain), [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)
+- [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache), [actions/checkout](https://github.com/actions/checkout), [actions/cache](https://github.com/actions/cache) — pinned to commit SHAs
+- [zizmor](https://docs.zizmor.sh/) — GitHub Actions security linter; audits fixed: `unpinned-uses`, `excessive-permissions`, `artipacked`, `concurrency-limits`, `superfluous-actions`
 - [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)

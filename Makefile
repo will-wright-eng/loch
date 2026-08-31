@@ -20,7 +20,7 @@ PERF_SHA ?= fa44e5194060305576514d59b850353643afbfc8
 PERF_MAX_SECONDS ?= 20
 PERF_MIN_SPEEDUP ?= 5
 
-.PHONY: help check build release test fmt fmt-check lint run install doc clean perf cross-check validate plot ci
+.PHONY: help check build release test fmt fmt-check lint lint-actions run install doc clean perf cross-check validate plot ci
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -45,6 +45,9 @@ fmt-check: ## Fail if any file is not rustfmt-clean (CI mode)
 
 lint: ## Run clippy, treating warnings as errors
 	cargo clippy --all-targets -- -D warnings
+
+lint-actions: ## Audit GitHub Actions workflows with zizmor (brew install zizmor); GH_TOKEN enables the online audits
+	zizmor --persona pedantic .github/workflows/
 
 run: ## Run the debug binary; pass flags via ARGS, e.g. make run ARGS="-n 10 --per-language"
 	cargo run -- $(ARGS)
