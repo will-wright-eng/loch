@@ -4,9 +4,8 @@ use std::process::Command;
 
 use tokei::{Config, LanguageType};
 
-fn git(dir: &Path, args: &[&str], day: u8) {
-    let date = format!("2024-01-{day:02}T12:00:00+00:00");
-    let out = Command::new("git")
+fn git_command(dir: &Path, args: &[&str], date: &str) -> std::process::Output {
+    Command::new("git")
         .current_dir(dir)
         .args(args)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -16,10 +15,14 @@ fn git(dir: &Path, args: &[&str], day: u8) {
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
         .env("GIT_COMMITTER_NAME", "Test")
         .env("GIT_COMMITTER_EMAIL", "test@example.com")
-        .env("GIT_AUTHOR_DATE", &date)
-        .env("GIT_COMMITTER_DATE", &date)
+        .env("GIT_AUTHOR_DATE", date)
+        .env("GIT_COMMITTER_DATE", date)
         .output()
-        .expect("failed to run git");
+        .expect("failed to run git")
+}
+
+fn git_dated(dir: &Path, args: &[&str], date: &str) {
+    let out = git_command(dir, args, date);
     assert!(
         out.status.success(),
         "git {args:?} failed: {}",
@@ -27,13 +30,17 @@ fn git(dir: &Path, args: &[&str], day: u8) {
     );
 }
 
+fn git(dir: &Path, args: &[&str], day: u8) {
+    git_dated(dir, args, &format!("2024-01-{day:02}T12:00:00+00:00"));
+}
+
 fn git_stdout(dir: &Path, args: &[&str]) -> String {
-    let out = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .output()
-        .expect("failed to run git");
-    assert!(out.status.success());
+    let out = git_command(dir, args, "2024-01-01T12:00:00+00:00");
+    assert!(
+        out.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8(out.stdout).unwrap().trim().to_string()
 }
 
@@ -77,6 +84,7 @@ const TEMP_PY: &str = "print('temp')\n";
 const TOP_PY: &str = "x = 1\n";
 const GEN_PY: &str = "# generated\ny = 2\n";
 const RUNME: &str = " #!/bin/sh\necho hi\n"; // leading whitespace before the shebang
+const LATIN1_PY: &[u8] = b"# caf\xe9\nx = 1\n"; // invalid UTF-8, decoded lossily on both sides
 const NOTEBOOK: &str = r##"{
  "cells": [
   {"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["x = 1\n", "y = 2\n", "z = 3\n"]},
@@ -126,6 +134,7 @@ fn build_fixture() -> Fixture {
     write_file(&root, "src/lib.py", LIB_PY.as_bytes(), false);
     write_file(&root, "src/main.rs", MAIN_RS_V2.as_bytes(), false);
     write_file(&root, "nb.ipynb", NOTEBOOK.as_bytes(), false);
+    write_file(&root, "latin1.py", LATIN1_PY, false);
     model.insert(
         "src/lib.py".into(),
         (LIB_PY.into(), Some(LanguageType::Python)),
@@ -137,6 +146,13 @@ fn build_fixture() -> Fixture {
     model.insert(
         "nb.ipynb".into(),
         (NOTEBOOK.into(), Some(LanguageType::Jupyter)),
+    );
+    model.insert(
+        "latin1.py".into(),
+        (
+            String::from_utf8_lossy(LATIN1_PY).into_owned(),
+            Some(LanguageType::Python),
+        ),
     );
     git(&root, &["add", "."], 2);
     git(&root, &["commit", "-q", "-m", "c2"], 2);
@@ -239,10 +255,10 @@ fn run(repo: &Path, args: &[&str]) -> (String, String) {
         .arg(repo)
         .args(args)
         .output()
-        .expect("failed to run repo-stats");
+        .expect("failed to run loch");
     assert!(
         out.status.success(),
-        "repo-stats {args:?} failed: {}",
+        "loch {args:?} failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     (
@@ -476,4 +492,92 @@ fn output_file_is_truncated_not_appended() {
     run(&fx.root, &["-o", out_path.to_str().unwrap()]);
     let written = std::fs::read_to_string(&out_path).unwrap();
     assert_eq!(written, expected_csv(&fx.commits, &[], false, 1));
+}
+
+#[test]
+fn broken_pipe_exits_quietly() {
+    let fx = build_fixture();
+    // Close the read end before spawning so the first flush hits EPIPE deterministically.
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    let out = Command::new(env!("CARGO_BIN_EXE_loch"))
+        .arg(&fx.root)
+        .stdout(writer)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "status: {}", out.status);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("Broken pipe"), "stderr: {stderr}");
+}
+
+#[test]
+fn committer_time_past_rfc3339_range_is_clamped() {
+    let dir = tempfile::tempdir().unwrap();
+    git(dir.path(), &["init", "-q", "-b", "main"], 1);
+    // One second past 9999-12-31T23:59:59Z: git stores it, RFC 3339 cannot express it.
+    git_dated(
+        dir.path(),
+        &["commit", "-q", "--allow-empty", "-m", "far"],
+        "@253402300800 +0000",
+    );
+    let sha = git_stdout(dir.path(), &["rev-parse", "HEAD"]);
+    let (stdout, stderr) = run(dir.path(), &[]);
+    assert_eq!(
+        stdout,
+        format!("timestamp,sha,language,files,code,comments,blanks\n9999-12-31T23:59:59Z,{sha},TOTAL,0,0,0,0\n")
+    );
+    assert!(stderr.contains("clamped"), "stderr: {stderr}");
+}
+
+#[test]
+fn empty_tree_still_emits_a_zero_total_row() {
+    let dir = tempfile::tempdir().unwrap();
+    git(dir.path(), &["init", "-q", "-b", "main"], 1);
+    git(
+        dir.path(),
+        &["commit", "-q", "--allow-empty", "-m", "root"],
+        1,
+    );
+    let sha = git_stdout(dir.path(), &["rev-parse", "HEAD"]);
+    let (stdout, _) = run(dir.path(), &["--per-language"]);
+    assert_eq!(
+        stdout,
+        format!("timestamp,sha,language,files,code,comments,blanks\n2024-01-01T12:00:00Z,{sha},TOTAL,0,0,0,0\n")
+    );
+}
+
+/// Deep enough that stats_tree's recursion overflows an 8 MiB main-thread stack;
+/// the binary walks on a 256 MiB worker thread instead (design §8). Measured
+/// 2026-08-30 with the worker thread removed: a debug build overflows somewhere
+/// between depth 2,500 and 5,000, so 20,000 keeps a margin for release-profile frames.
+const DEEP_TREE_DEPTH: usize = 20_000;
+
+#[test]
+fn pathologically_deep_tree_is_walked_without_overflow() {
+    let dir = tempfile::tempdir().unwrap();
+    git(dir.path(), &["init", "-q", "-b", "main"], 1);
+    // Built straight into the ODB: PATH_MAX rules out a working tree, and one
+    // `git mktree` process per level would take minutes.
+    let repo = gix::open(dir.path()).unwrap();
+    let mut oid = repo.write_blob(TOP_PY.as_bytes()).unwrap().detach();
+    let mut kind = gix::object::tree::EntryKind::Blob;
+    let mut filename = "top.py";
+    for _ in 0..DEEP_TREE_DEPTH {
+        let tree = gix::objs::Tree {
+            entries: vec![gix::objs::tree::Entry {
+                mode: kind.into(),
+                filename: filename.into(),
+                oid,
+            }],
+        };
+        oid = repo.write_object(&tree).unwrap().detach();
+        kind = gix::object::tree::EntryKind::Tree;
+        filename = "d";
+    }
+    let sha = git_stdout(dir.path(), &["commit-tree", &oid.to_string(), "-m", "deep"]);
+    let (stdout, _) = run(dir.path(), &["-r", &sha]);
+    assert_eq!(
+        stdout,
+        format!("timestamp,sha,language,files,code,comments,blanks\n2024-01-01T12:00:00Z,{sha},TOTAL,1,1,0,0\n")
+    );
 }
