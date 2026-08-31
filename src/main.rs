@@ -121,7 +121,7 @@ fn run(args: Args) -> Result<()> {
 
     let last = commits.len() - 1;
     for (i, id) in commits.iter().enumerate() {
-        if i as u64 % args.every != 0 && i != last {
+        if !(i as u64).is_multiple_of(args.every) && i != last {
             continue;
         }
         let commit = repo
