@@ -23,19 +23,20 @@ struct Args {
     r#ref: String,
 
     /// Output format
-    #[arg(short, long, value_enum, default_value_t = Format::Csv)]
+    #[arg(short, long, value_enum, value_name = "FMT", default_value_t = Format::Csv)]
     format: Format,
 
     /// Output path (stdout if omitted)
-    #[arg(short, long)]
+    #[arg(short, long, value_name = "FILE")]
     output: Option<PathBuf>,
 
-    /// Repo-root-anchored path prefixes to skip (e.g. vendor/ node_modules/)
-    #[arg(short, long = "exclude")]
+    /// Repo-root-anchored path prefix to skip; repeat the flag for each one
+    /// (e.g. -e vendor -e node_modules)
+    #[arg(short, long = "exclude", value_name = "PREFIX")]
     exclude: Vec<String>,
 
     /// Sample every Nth commit, oldest first; the tip commit is always emitted
-    #[arg(short = 'n', long = "every", default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..))]
+    #[arg(short = 'n', long = "every", value_name = "N", default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..))]
     every: u64,
 
     /// Emit per-language rows before each commit's TOTAL row
@@ -43,7 +44,7 @@ struct Args {
     per_language: bool,
 
     /// gix object decode cache size in MiB
-    #[arg(long, default_value_t = 256)]
+    #[arg(long, value_name = "N", default_value_t = 256)]
     object_cache_mb: usize,
 
     /// Disable tree/blob memoization (exists for cache-correctness testing)
@@ -57,16 +58,44 @@ enum Format {
     Jsonl,
 }
 
-fn main() -> Result<()> {
+fn main() {
     let args = Args::parse();
-    // stats_tree recurses per directory level; a fat stack keeps pathologically
-    // deep trees (hostile/hand-crafted repos) from overflowing the default stack.
-    std::thread::Builder::new()
+    match run_on_fat_stack(args) {
+        Ok(()) => {}
+        // Downstream closed the pipe (`loch | head`): not a failure worth reporting.
+        Err(err) if is_broken_pipe(&err) => std::process::exit(0),
+        Err(err) => {
+            eprintln!("Error: {err:?}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// stats_tree recurses per directory level; a fat stack keeps pathologically
+/// deep trees (hostile/hand-crafted repos) from overflowing the default stack.
+fn run_on_fat_stack(args: Args) -> Result<()> {
+    let worker = std::thread::Builder::new()
         .stack_size(256 * 1024 * 1024)
         .spawn(move || run(args))
-        .context("failed to spawn worker thread")?
+        .context("failed to spawn worker thread")?;
+    worker
         .join()
         .map_err(|_| anyhow::anyhow!("worker thread panicked"))?
+}
+
+/// `csv::Error` exposes its io error only through `kind()`, not `source()`,
+/// so a plain walk of the anyhow chain would miss EPIPE on the CSV path.
+fn is_broken_pipe(err: &anyhow::Error) -> bool {
+    use std::io::ErrorKind::BrokenPipe;
+    err.chain().any(|cause| {
+        if let Some(io) = cause.downcast_ref::<std::io::Error>() {
+            return io.kind() == BrokenPipe;
+        }
+        matches!(
+            cause.downcast_ref::<csv::Error>().map(csv::Error::kind),
+            Some(csv::ErrorKind::Io(io)) if io.kind() == BrokenPipe
+        )
+    })
 }
 
 fn run(args: Args) -> Result<()> {
@@ -92,7 +121,7 @@ fn run(args: Args) -> Result<()> {
 
     let last = commits.len() - 1;
     for (i, id) in commits.iter().enumerate() {
-        if i as u64 % args.every != 0 && i != last {
+        if !(i as u64).is_multiple_of(args.every) && i != last {
             continue;
         }
         let commit = repo
