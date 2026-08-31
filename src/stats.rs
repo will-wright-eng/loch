@@ -253,7 +253,7 @@ impl<'repo> Counter<'repo> {
         // The sentinel directory cannot exist, so from_path's shebang fallback
         // (which opens the path) can never read a stray same-named local file.
         let lossy_name = name.to_str_lossy();
-        let sentinel = Path::new("/__repo_stats_no_such_dir__").join(lossy_name.as_ref());
+        let sentinel = Path::new("/__loch_no_such_dir__").join(lossy_name.as_ref());
         if let Some(lang) = LanguageType::from_path(&sentinel, &self.config) {
             return Ok(Some(lang));
         }
