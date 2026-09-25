@@ -6,6 +6,9 @@ name = "loch"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.87"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/will-wright-eng/loch"
+readme = "README.md"
 description = "Per-commit codebase statistics (LOC history) via gix + tokei, without materializing a working tree"
 
 [dependencies]
