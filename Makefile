@@ -20,13 +20,16 @@ PERF_SHA ?= fa44e5194060305576514d59b850353643afbfc8
 PERF_MAX_SECONDS ?= 20
 PERF_MIN_SPEEDUP ?= 5
 
-.PHONY: help check build release test fmt fmt-check lint lint-actions run install doc clean perf cross-check validate plot ci
+.PHONY: help check check-slim build release test fmt fmt-check lint lint-actions run install doc clean perf cross-check validate plot ci
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
 check: ## Type-check without producing a binary (fastest feedback)
 	cargo check --all-targets
+
+check-slim: ## Type-check the chart-free build (--no-default-features)
+	cargo check --all-targets --no-default-features
 
 build: ## Compile a debug binary (target/debug/loch)
 	cargo build
@@ -74,8 +77,7 @@ validate: perf ## Run the design §9 validation suite (perf bound + cross-checks
 	$(MAKE) cross-check REPO=$(PERF_REPO) REF=$(PERF_SHA)
 	$(MAKE) cross-check REPO=. REF=HEAD
 
-plot: release ## Chart a repo's language history: make plot REPO=/path/to/repo
-	./target/release/loch $(REPO) --per-language -o loch.csv
-	./scripts/loch_plot.py loch.csv
+plot: release ## Write a repo's per-language CSV and chart: make plot REPO=/path/to/repo
+	./target/release/loch $(REPO) --per-language -o loch.csv --plot loch.png
 
-ci: fmt-check lint test ## Everything a CI gate should run
+ci: fmt-check lint check-slim test ## Everything a CI gate should run

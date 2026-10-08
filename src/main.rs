@@ -1,4 +1,6 @@
 mod output;
+#[cfg(feature = "plot")]
+mod plot;
 mod stats;
 mod walk;
 
@@ -50,6 +52,21 @@ struct Args {
     /// Disable tree/blob memoization (exists for cache-correctness testing)
     #[arg(long, hide = true)]
     no_cache: bool,
+
+    /// Render a stacked-area chart of per-language history (.svg, else PNG)
+    #[cfg(feature = "plot")]
+    #[arg(long, value_name = "FILE")]
+    plot: Option<PathBuf>,
+
+    /// Metric charted by --plot
+    #[cfg(feature = "plot")]
+    #[arg(long, value_enum, value_name = "METRIC", default_value_t = plot::Metric::Code, requires = "plot")]
+    plot_metric: plot::Metric,
+
+    /// Languages charted individually by --plot; the rest fold into "Other"
+    #[cfg(feature = "plot")]
+    #[arg(long, value_name = "N", default_value_t = 8, requires = "plot", value_parser = clap::value_parser!(u64).range(1..))]
+    plot_top: u64,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -118,6 +135,8 @@ fn run(args: Args) -> Result<()> {
     let mut writer =
         output::Writer::new(matches!(args.format, Format::Jsonl), args.output.as_deref())?;
     let mut counter = stats::Counter::new(&repo, &args.exclude, !args.no_cache);
+    #[cfg(feature = "plot")]
+    let mut collector = args.plot.as_ref().map(|_| plot::Collector::default());
 
     let last = commits.len() - 1;
     for (i, id) in commits.iter().enumerate() {
@@ -133,8 +152,18 @@ fn run(args: Args) -> Result<()> {
         let tree_id = commit.tree_id()?.detach();
         let totals = counter.stats_tree(tree_id)?;
         writer.emit(seconds, id, &totals, args.per_language)?;
+        #[cfg(feature = "plot")]
+        if let Some(collector) = collector.as_mut() {
+            collector.push(seconds, totals);
+        }
     }
     writer.finish()?;
     counter.report_skips();
+    // Rendered after rows flush so an interrupted run still leaves the CSV intact.
+    #[cfg(feature = "plot")]
+    if let (Some(collector), Some(path)) = (collector, args.plot.as_deref()) {
+        collector.render(args.plot_metric, args.plot_top as usize, path)?;
+        eprintln!("chart written to {}", path.display());
+    }
     Ok(())
 }

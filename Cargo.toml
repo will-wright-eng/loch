@@ -16,8 +16,13 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 csv = "1"
 gix = "=0.85.0"
+plotters = { version = "0.3.7", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "svg_backend", "area_series", "ab_glyph"], optional = true }
 serde_json = "1"
 tempfile = "3"
 time = { version = "0.3", features = ["formatting"] }
 tokei = "=14.0.0"
+
+[features]
+default = ["plot"]
+plot = ["dep:plotters"]
 

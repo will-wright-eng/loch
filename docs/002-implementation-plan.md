@@ -320,6 +320,8 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
   feature set empirically (`revision` is required for `rev_parse_single`).
 - **README.md.** Not required by the design doc. Worth adding once the CLI surface is
   final (after Phase 1): usage, the pandas densify recipe from §5.1, and `scripts/loch_plot.py`.
+  *Superseded:* the script and the pandas recipe were replaced by the native `--plot` flag
+  ([003-plot-implementation-plan.md](003-plot-implementation-plan.md)).
 - **`-e` runtime guard.** Detecting "second bare token was probably meant as an exclude"
   is guesswork; the help-text fix is the honest solution.
 

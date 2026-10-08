@@ -581,3 +581,107 @@ fn pathologically_deep_tree_is_walked_without_overflow() {
         format!("timestamp,sha,language,files,code,comments,blanks\n2024-01-01T12:00:00Z,{sha},TOTAL,1,1,0,0\n")
     );
 }
+
+#[cfg(feature = "plot")]
+#[test]
+fn plot_svg_lists_each_language() {
+    let fx = build_fixture();
+    let out = fx.root.join("history.svg");
+    let (_, stderr) = run(&fx.root, &["--plot", out.to_str().unwrap()]);
+    assert!(stderr.contains("chart written to"), "stderr: {stderr}");
+    let svg = std::fs::read_to_string(&out).unwrap();
+    assert!(
+        svg.starts_with("<svg"),
+        "not an svg: {}",
+        &svg[..40.min(svg.len())]
+    );
+    let title = format!("code by language over {} commits", fx.commits.len());
+    assert!(svg.contains(&title), "missing title {title:?}");
+    let languages: std::collections::BTreeSet<&str> = fx
+        .commits
+        .iter()
+        .flat_map(|c| {
+            c.files
+                .values()
+                .filter_map(|(_, lang)| lang.map(|l| l.name()))
+        })
+        .collect();
+    assert!(!languages.is_empty());
+    for lang in languages {
+        assert!(
+            svg.lines().any(|line| line == lang),
+            "missing legend entry {lang}"
+        );
+    }
+    assert!(!svg.lines().any(|line| line == "Other"));
+}
+
+#[cfg(feature = "plot")]
+#[test]
+fn plot_top_folds_into_other() {
+    let fx = build_fixture();
+    let out = fx.root.join("top.svg");
+    run(
+        &fx.root,
+        &[
+            "--plot",
+            out.to_str().unwrap(),
+            "--plot-top",
+            "1",
+            "--plot-metric",
+            "lines",
+        ],
+    );
+    let svg = std::fs::read_to_string(&out).unwrap();
+    assert!(svg.lines().any(|line| line == "Other"));
+    assert!(svg.contains("lines by language over"));
+}
+
+#[cfg(feature = "plot")]
+#[test]
+fn plot_png_has_magic_bytes() {
+    let fx = build_fixture();
+    let out = fx.root.join("history.png");
+    let (stdout, _) = run(&fx.root, &["--plot", out.to_str().unwrap()]);
+    assert!(
+        stdout.starts_with("timestamp,sha,"),
+        "rows still stream to stdout"
+    );
+    let png = std::fs::read(&out).unwrap();
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    assert!(png.len() > 1024, "png is only {} bytes", png.len());
+}
+
+#[cfg(feature = "plot")]
+#[test]
+fn plot_flags_require_plot() {
+    let fx = build_fixture();
+    for args in [&["--plot-top", "3"], &["--plot-metric", "files"]] {
+        let out = Command::new(env!("CARGO_BIN_EXE_loch"))
+            .arg(&fx.root)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(!out.status.success(), "{args:?} should fail without --plot");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("--plot <FILE>"), "stderr: {stderr}");
+    }
+}
+
+#[cfg(feature = "plot")]
+#[test]
+fn plot_is_skipped_on_broken_pipe() {
+    let fx = build_fixture();
+    let out = fx.root.join("never.png");
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    let status = Command::new(env!("CARGO_BIN_EXE_loch"))
+        .arg(&fx.root)
+        .args(["--plot", out.to_str().unwrap()])
+        .stdout(writer)
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert!(!out.exists(), "chart must not be written after EPIPE");
+}
