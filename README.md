@@ -25,6 +25,9 @@ From source (Rust 1.87+):
 cargo install --git https://github.com/will-wright-eng/loch --locked
 ```
 
+Charting (`--plot`) is on by default. Add `--no-default-features` for a build without
+it; the slim binary skips the bundled font and PNG encoder.
+
 ## Usage
 
 ```text
@@ -37,10 +40,14 @@ loch [OPTIONS] [REPO_PATH]
   -n, --every <N>            Sample every Nth commit; the tip is always emitted [default: 1]
       --per-language         Emit per-language rows before each commit's TOTAL row
       --object-cache-mb <N>  gix object decode cache size in MiB [default: 256]
+      --plot <FILE>          Render a stacked-area chart of per-language history (.svg, else PNG)
+      --plot-metric <METRIC> code | comments | blanks | files | lines [default: code]
+      --plot-top <N>         Languages charted individually; the rest fold into "Other" [default: 8]
 ```
 
 ```bash
 loch ~/src/project --per-language -e vendor -o history.csv
+loch ~/src/project --plot history.png
 ```
 
 Output has the same seven columns in every mode. By default each commit emits one
@@ -55,6 +62,15 @@ timestamp,sha,language,files,code,comments,blanks
 `timestamp` is committer time in UTC (RFC 3339) and `sha` is the full object ID. JSON
 Lines output has the same fields. Rows are flushed per commit, so an interrupted run
 leaves a valid prefix.
+
+`--plot` is an additional sink: rows still stream to stdout or `-o`, and the chart is
+written after the last row. It always charts per-language data, whatever the row
+layout. `-n` sampling thins the chart as well as the rows, which keeps SVG output
+small on long histories. For a chart-only run, send rows to `/dev/null`:
+
+```bash
+loch ~/src/project -n 10 --plot history.svg > /dev/null
+```
 
 ## Development
 
@@ -73,8 +89,13 @@ Copyright (C) 2026 Will Wright
 Licensed under the GNU General Public License, version 3 or (at your option) any
 later version. See [LICENSE](LICENSE).
 
+The binary embeds DejaVu Sans for chart text, under the Bitstream Vera licence in
+[assets/fonts/LICENSE-DejaVu.txt](assets/fonts/LICENSE-DejaVu.txt).
+
 ## References
 
 - [gix](https://github.com/GitoxideLabs/gitoxide)
 - [tokei](https://github.com/XAMPPRocky/tokei)
+- [plotters](https://github.com/plotters-rs/plotters)
+- [DejaVu fonts](https://dejavu-fonts.github.io/)
 - [will-wright-eng/homebrew-tools](https://github.com/will-wright-eng/homebrew-tools)

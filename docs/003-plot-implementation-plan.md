@@ -1,6 +1,6 @@
 # Implementation Plan: Native Charting with `--plot`
 
-**Status:** Proposed · **Date:** 2026-10-07 · **Companion:** [001-design-doc.md](001-design-doc.md) §11 · **Estimate:** ~half a day
+**Status:** Implemented · **Date:** 2026-10-07 · **Companion:** [001-design-doc.md](001-design-doc.md) §11 · **Estimate:** ~half a day
 
 ---
 
@@ -159,8 +159,23 @@ design §11 if someone wants them.
 
 ## 7. Results
 
-To be filled on completion: build-time delta, binary size delta, `otool -L` output, and the
-`make plot` chart for this repository.
+Measured 2026-10-07 on an Apple Silicon laptop, clean `cargo build --release` into a fresh
+target directory, before and after this change.
+
+| Measure | Before | After |
+|---|---|---|
+| Clean release build (wall) | 24.6 s | 25.0 s |
+| Binary size | 7,232,384 B | 8,625,744 B (+1.33 MiB: font + PNG encoder) |
+| `otool -L` | `libiconv`, `libSystem` | unchanged |
+| `cargo +1.87 check --locked --all-targets` | clean | clean, with and without `--no-default-features` |
+
+Phase 0 findings: under `ab_glyph`, both `BitMapBackend` and `SVGBackend` fail with
+`FontUnavailable` when no font is registered (SVG still needs the font for text layout),
+and both succeed with DejaVu Sans registered as `"sans-serif"`. `cargo add` re-pointed a
+few Windows-only crates between the three `windows-sys` versions already in the lockfile;
+no version was added or removed and the 1.87 pins did not move.
+
+`make plot REPO=.` writes `loch.csv` and `loch.png` for this repository (both gitignored).
 
 ## References
 

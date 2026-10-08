@@ -114,7 +114,13 @@ OPTIONS:
       --per-language         Emit per-language rows (default: totals only)
       --object-cache-mb <N>  gix object decode cache size [default: 256]
       --no-cache             Disable tree/blob memoization (hidden debug flag; exists for test 9.3)
+      --plot <FILE>          Render a stacked-area chart of per-language history (.svg, else PNG)
+      --plot-metric <METRIC> code | comments | blanks | files | lines [default: code]
+      --plot-top <N>         Languages charted individually; the rest fold into "Other" [default: 8]
 ```
+
+The `--plot*` flags exist only in the default `plot` Cargo feature; `--no-default-features`
+builds without them. See [003-plot-implementation-plan.md](003-plot-implementation-plan.md).
 
 Semantics:
 
@@ -214,7 +220,7 @@ Roughly a 3-day prototype for someone comfortable in Rust, with M1–M3 deliveri
 - Language-category tagging for `TOTAL` filtering (hand-maintained language→category map, or a `--no-data` deny-list), since tokei exposes no category API.
 - Redistribute embedded-language stats (JS in HTML, Markdown fences) to child-language rows instead of folding into the container.
 - `--all-parents` mode and per-directory rollups (stats per top-level directory over time).
-- Plotting helper (`loch plot stats.csv`) or a documented pandas/vega recipe.
+- ~~Plotting helper~~ Shipped as `--plot` (stacked-area PNG/SVG via plotters); see [003-plot-implementation-plan.md](003-plot-implementation-plan.md). Per-directory charts and interactive HTML output remain open.
 
 ## 12. Open Questions
 
