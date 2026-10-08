@@ -1,6 +1,6 @@
 # Implementation Plan: Native Charting with `--plot`
 
-**Status:** Proposed · **Date:** 2026-10-07 · **Companion:** [design-doc.md](design-doc.md) §11 · **Estimate:** ~half a day
+**Status:** Proposed · **Date:** 2026-10-07 · **Companion:** [001-design-doc.md](001-design-doc.md) §11 · **Estimate:** ~half a day
 
 ---
 
@@ -20,9 +20,9 @@ without system libraries, and keep the binary linking only `libSystem` + `libico
 
 | Check | Result |
 |---|---|
-| Toolchain | cargo 1.99.0 locally; MSRV 1.87 enforced in CI |
+| Toolchain | cargo 1.99.0 locally; MSRV 1.87 enforced in CI. Only `stable` and 1.97 toolchains are installed locally |
 | `plotters` latest | 0.3.7, MIT. Default features pull in `font-kit` (system fontconfig), `chrono`, GIF, and every series type |
-| Font backends | `ttf` = font-kit (dynamic system libs); `ab_glyph` = pure Rust, fonts registered from `&'static [u8]` via `plotters::style::register_font` |
+| Font backends | `ttf` = font-kit (dynamic system libs); `ab_glyph` = pure Rust, fonts registered from `&'static [u8]` via `plotters::style::register_font`. Lookup is by family-name string, resolved when a `FontDesc` is constructed; an unregistered family yields `FontError::FontUnavailable` as a draw error (no panic, no silent blank text). plotters' own default label font is `FontFamily::SansSerif`, i.e. `"sans-serif"` |
 | Existing data flow | `run()` in `src/main.rs` streams one `LangTotals` per commit straight into `output::Writer`; nothing is retained across commits |
 | Script features | summary table, `--metric`, `--top` with "Other" fold, `--pivot` wide CSV, `--no-plot`, stacked area over calendar time |
 | Current `make plot` | release build → CSV → `scripts/loch_plot.py` |
@@ -37,7 +37,7 @@ without system libraries, and keep the binary linking only `libSystem` + `libico
 | Format | By extension: `.svg` → `SVGBackend`, anything else → `BitMapBackend` PNG | No extra flag. SVG also makes integration tests inspectable |
 | Data source | Always per-language from the in-memory `LangTotals`, independent of `--per-language` | The data is already there; no reason to tie chart content to row layout |
 | Time axis | `i64` unix seconds on x, labels formatted with the `time` crate already in the tree | Avoids the `chrono` dependency. Sort stable by time so equal stamps keep commit order (same rule as the script) |
-| Text | `ab_glyph` feature + one embedded OFL/Bitstream-licensed TTF registered at startup of `render()` | `font-kit` needs fontconfig on Linux and breaks the static-binary goal. Embedding costs ~0.7 MB |
+| Text | `ab_glyph` feature + embedded DejaVu Sans (regular weight, Bitstream Vera licence), registered under the family name `"sans-serif"` at the start of `render()`, before any text style is built | `font-kit` needs fontconfig on Linux and breaks the static-binary goal. `"sans-serif"` is what plotters' default mesh labels resolve, so no style needs an explicit family. Embedding costs ~0.7 MB |
 | Dropped from script | Summary table, `--pivot`, `--no-plot` | Not charting. `--per-language` CSV already feeds any pivot; a summary belongs in a future `loch summary` if wanted |
 
 ### 3.1 CLI surface
@@ -72,13 +72,14 @@ Validate the two things this plan assumes before touching real code.
 | # | Item | Pass condition |
 |---|---|---|
 | 0.1 | Add `plotters` with the trimmed feature set in a scratch binary, render a two-layer `AreaSeries` stack to SVG and PNG | Both files open; PNG is non-trivial size |
-| 0.2 | Confirm text behaviour under `ab_glyph` with and without `register_font` | Document which: panic, error, or silent no-text. Decide if `render()` must guard |
-| 0.3 | `cargo check --locked` on rustc 1.87 with the new deps | Clean. If `image`/`ab_glyph` transitive pins break 1.87, pin with `cargo update <crate> --precise` per the Makefile note |
+| 0.2 | Confirm text behaviour under `ab_glyph`: render once without `register_font`, once with DejaVu Sans registered as `"sans-serif"` | Matches the source reading in §2: the unregistered run fails with a `FontUnavailable` draw error; the registered run rasterises title, labels, and legend in the PNG |
+| 0.3 | `rustup toolchain install 1.87 --profile minimal`, then `cargo +1.87 check --locked --all-targets` with the new deps | Clean. If `image`/`ab_glyph` transitive pins break 1.87, pin with `cargo update <crate> --precise` per the Makefile note |
 | 0.4 | `otool -L target/release/loch` | Still only `libSystem` + `libiconv` |
 | 0.5 | Measure clean release build time and binary size before/after | Record in §7 |
 
-Fallback if 0.2 shows `ab_glyph` is unworkable: SVG-only output via `SVGBackend` with no font
-feature (SVG text is rendered by the viewer, not plotters).
+Fallback if 0.2 contradicts the source reading and `ab_glyph` proves unworkable: SVG-only
+output via `SVGBackend` with no font feature (SVG text is rendered by the viewer, not
+plotters).
 
 ### Phase 1 — Dependency and feature plumbing (~20 min)
 
@@ -86,8 +87,8 @@ feature (SVG text is rendered by the viewer, not plotters).
 |---|---|---|
 | 1.1 | `Cargo.toml` | `plotters = { version = "0.3.7", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "svg_backend", "area_series", "ab_glyph"], optional = true }`; `[features] default = ["plot"]`, `plot = ["dep:plotters"]` |
 | 1.2 | Lockfile | `cargo add` then inspect `git diff Cargo.lock`: only new crates may appear. The pinned `home`/`time`/`human_format` lines must not move |
-| 1.3 | Font asset | `assets/fonts/<Font>.ttf` + its licence file. Candidates: DejaVu Sans (Bitstream Vera licence) or Inter (OFL). Both are GPL-compatible for bundling. Prefer a subset or the smallest weight to limit binary growth |
-| 1.4 | `LICENSE` / `README.md` | One line noting the bundled font and its licence |
+| 1.3 | Font asset | `assets/fonts/DejaVuSans.ttf` (regular weight only) + the Bitstream Vera licence text beside it. GPL-compatible for bundling; ~0.75 MB |
+| 1.4 | `LICENSE` / `README.md` | One line noting the bundled DejaVu Sans font and its Bitstream Vera licence |
 
 Commit: `build(plot): add plotters behind default-on plot feature`
 
@@ -98,7 +99,7 @@ Commit: `build(plot): add plotters behind default-on plot feature`
 | 2.1 | `Metric` enum | `Code, Comments, Blanks, Files, Lines` with `clap::ValueEnum`; `fn pick(&self, c: &Counts) -> u64` where `Lines = code + comments + blanks` |
 | 2.2 | `Collector` | `Vec<(i64, Rc<LangTotals>)>`. `push(seconds, totals)` called from `run()` right after `writer.emit`. `Rc` means retention is nearly free: cached subtrees are already shared |
 | 2.3 | `shape(&[(i64, Rc<LangTotals>)], metric, top) -> Shaped` | Pure function. Produces `times: Vec<i64>` (stable-sorted by time), `series: Vec<(String, Vec<u64>)>` ordered by final value desc with `Other` folded, and cumulative stacks. Unit-testable without rendering |
-| 2.4 | `render(shaped, path) -> Result<()>` | Dispatch on extension to `SVGBackend` / `BitMapBackend`. Call `register_font` once via `std::sync::Once` (or the `once_cell`-style `OnceLock`). Build chart per §3.2 |
+| 2.4 | `render(shaped, path) -> Result<()>` | Dispatch on extension to `SVGBackend` / `BitMapBackend`. First call `register_font("sans-serif", FontStyle::Normal, include_bytes!(...))` once via `std::sync::Once` (or `OnceLock`); it must precede construction of any `FontDesc`/text style because plotters resolves the family at construction. Then build chart per §3.2 using plotters' default label font, which already resolves `"sans-serif"` |
 | 2.5 | Error context | Wrap backend errors with the output path; plotters' `DrawingAreaErrorKind` does not name the file |
 | 2.6 | Unit tests (in `plot.rs`) | top-N fold sums the tail into `Other`; ordering by final value; stable tie order for equal timestamps; `Lines` metric sums; empty-tree commit yields a zero column, not a missing one; single-commit x-range widening |
 
@@ -110,7 +111,7 @@ Commit: `feat(plot): add stacked-area chart module`
 |---|---|---|
 | 3.1 | `Args` | Add the three `#[cfg(feature = "plot")]` fields from §3.1 |
 | 3.2 | `run()` | `let mut collector = args.plot.as_ref().map(\|_\| plot::Collector::default());` push per emitted commit; after `writer.finish()`, `collector.render(...)`. Chart renders after rows flush so an interrupted run still leaves CSV intact |
-| 3.3 | Broken pipe | `is_broken_pipe` already covers CSV/JSONL. Rendering happens after the pipe is done, so no change expected; verify with `loch . --plot x.png \| head -1` |
+| 3.3 | Broken pipe | `is_broken_pipe` already covers CSV/JSONL. A closed stdout fails the first `writer.emit` flush, `run()` returns before the render step, and `main` exits 0 silently as today; **no chart is written**. This is the documented behaviour, not a bug: chart-only runs use `> /dev/null` or `-o /dev/null`, which never hit EPIPE. Verify with `loch . --plot x.png \| head -1`: exit 0, no `x.png` |
 | 3.4 | Stderr line | `chart written to <path>` to stderr, matching the warning channel. Stdout stays pure data |
 
 Commit: `feat(cli): add --plot, --plot-metric, --plot-top`
@@ -134,8 +135,8 @@ Commit: `test(plot): cover chart output and slim build`
 | 5.1 | Delete `scripts/loch_plot.py` | The `make plot` target no longer references it |
 | 5.2 | `README.md` Usage | Add the three flags to the options block and one example: `loch ~/src/project --plot history.png` |
 | 5.3 | `README.md` Install | Mention `--no-default-features` for the chart-free build |
-| 5.4 | `docs/design-doc.md` §11 | Replace the "Plotting helper" bullet with a pointer to this plan and the shipped flag; add `--plot*` to the §5 CLI table |
-| 5.5 | `docs/implementation-plan.md` line 322 | Note that the pandas recipe and script are superseded |
+| 5.4 | `docs/001-design-doc.md` §11 | Replace the "Plotting helper" bullet with a pointer to this plan and the shipped flag; add `--plot*` to the §5 CLI table |
+| 5.5 | `docs/002-implementation-plan.md` §8 (line 322) | Note that the pandas recipe and script are superseded |
 | 5.6 | This document | Set **Status:** Implemented, fill §7 |
 
 Commit: `refactor(plot): drop Python plot script in favour of --plot`
@@ -144,7 +145,7 @@ Commit: `refactor(plot): drop Python plot script in favour of --plot`
 
 | Risk | Mitigation |
 |---|---|
-| `ab_glyph` text behaviour without a registered font is undocumented | Phase 0.2 settles it; `render()` registers unconditionally so the question is moot in practice |
+| `ab_glyph` text behaviour deviates from the source reading in §2 (error on unregistered font, `"sans-serif"` lookup) | Phase 0.2 confirms it empirically; `render()` registers unconditionally under `"sans-serif"` before any text style exists, so the error path is unreachable in practice |
 | Binary grows by the font plus `image` PNG encoder (~1–2 MB) | Acceptable for a CLI. The slim feature exists for anyone who cares |
 | `cargo add` disturbs the 1.87 pins in `Cargo.lock` | Phase 1.2 diff review; fix with `--precise` |
 | Retaining `Rc<LangTotals>` for every commit on a 100k-commit repo | Each entry is one `Rc` plus an `i64`; the maps are already alive in `tree_cache`. With `--no-cache` the maps are unique, roughly 1 KiB each, so 100 MB worst case. Document; do not optimise yet |
@@ -168,5 +169,4 @@ To be filled on completion: build-time delta, binary size delta, `otool -L` outp
 - plotters `AreaSeries`: https://docs.rs/plotters/0.3.7/plotters/series/struct.AreaSeries.html
 - plotters Cargo features (v0.3.7 manifest): https://github.com/plotters-rs/plotters/blob/v0.3.7/plotters/Cargo.toml
 - DejaVu fonts licence: https://dejavu-fonts.github.io/License.html
-- Inter font (OFL): https://github.com/rsms/inter
 - Cargo features reference: https://doc.rust-lang.org/cargo/reference/features.html
