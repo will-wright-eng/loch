@@ -19,7 +19,7 @@ Homebrew:
 brew install will-wright-eng/tools/loch
 ```
 
-From source (Rust 1.87+):
+From source (Rust 1.88+):
 
 ```bash
 cargo install --git https://github.com/will-wright-eng/loch --locked
@@ -77,7 +77,7 @@ loch ~/src/project -n 10 --plot history.svg > /dev/null
 `make` lists the targets. `make ci` runs formatting, clippy, and tests;
 `make validate` runs the performance guards and the tokei cross-check.
 
-`Cargo.lock` pins some transitive dependencies for rustc 1.87 compatibility. Don't run
+`Cargo.lock` pins some transitive dependencies for rustc 1.88 compatibility. Don't run
 a bare `cargo update`; see the note at the top of the [Makefile](Makefile).
 
 Design and rationale: [docs/design-doc.md](docs/design-doc.md).
