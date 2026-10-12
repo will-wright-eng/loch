@@ -3,19 +3,22 @@ name: release
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  # Dry run of the build gate when this file changes; tag-only steps are skipped.
+  pull_request:
+    paths: [.github/workflows/release.yml]
 
 permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   verify:
-    name: verify tag (make ci + Homebrew build)
+    name: verify (make ci + Homebrew build)
     # The tap builds from source on macOS, so gate on the platform its users run.
     runs-on: macos-latest
     permissions:
@@ -26,6 +29,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Tagged commit is on main
+        if: github.ref_type == 'tag'
         run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
       - run: make ci
@@ -34,6 +38,7 @@ jobs:
       - name: Build as Homebrew does
         run: cargo install --locked --path . --root "$RUNNER_TEMP/brew"
       - name: Version matches tag
+        if: github.ref_type == 'tag'
         env:
           TAG: ${{ github.ref_name }}
         run: test "$("$RUNNER_TEMP/brew/bin/loch" --version)" = "loch ${TAG#v}"
@@ -41,6 +46,7 @@ jobs:
   release:
     name: publish GitHub release
     needs: verify
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the release
