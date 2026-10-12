@@ -146,7 +146,7 @@ JSONL mirrors the same fields, one object per row. Rows stream as they are compu
 
 | Crate | Purpose | Notes |
 |---|---|---|
-| `gix` | Repo open, rev walk, tree/blob access | API churns between versions — pinned to **`=0.85.0`**. Crate MSRV is **1.87**: gix needs 1.85, and the test suite uses `std::io::pipe` (stable since 1.87). Verified against docs.rs: `rev_walk(..).first_parent_only()`, `Repository::object_cache_size()`, ODB blob access all present; no reverse/oldest-first sort mode (collect + reverse instead). |
+| `gix` | Repo open, rev walk, tree/blob access | API churns between versions — pinned to **`=0.85.0`**. Crate MSRV is **1.88**: gix needs 1.85, the test suite uses `std::io::pipe` (stable since 1.87), and `time` ≥ 0.3.46 (RFC 2822 DoS fix in 0.3.47) needs 1.88. Verified against docs.rs: `rev_walk(..).first_parent_only()`, `Repository::object_cache_size()`, ODB blob access all present; no reverse/oldest-first sort mode (collect + reverse instead). |
 | `tokei` | Language detection + line counting | Pinned to **`=14.0.0`** (stable; 13.0.0 ended the multi-year alpha series in Nov 2025). `LanguageType::from_path` and `parse_from_str` both take a `&tokei::Config` — one shared `Config::default()` is used everywhere; `tokei.toml`/`.tokeirc` are never read. |
 | `clap` (derive) | CLI | |
 | `serde` / `csv` / `serde_json` | Output | |

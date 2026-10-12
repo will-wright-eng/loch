@@ -1,8 +1,8 @@
 # Development workflow for loch. All targets are phony (no file outputs);
 # `make` alone prints this list.
 #
-# NOTE: Cargo.lock intentionally pins home/time/human_format below their latest
-# versions for rustc 1.87 compatibility — a bare `cargo update` will undo that
+# NOTE: Cargo.lock intentionally pins kstring below its latest version for
+# rustc 1.88 compatibility — a bare `cargo update` will undo that
 # and break the build. Update dependencies one at a time with
 # `cargo update <crate> --precise <version>`.
 
