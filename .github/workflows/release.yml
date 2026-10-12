@@ -1,0 +1,52 @@
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: verify tag (make ci + Homebrew build)
+    # The tap builds from source on macOS, so gate on the platform its users run.
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Tagged commit is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
+      - run: make ci
+      # Mirrors the tap formula: `cargo install *std_cargo_args`, then its
+      # `--version` assertion, which also catches a tag/Cargo.toml mismatch.
+      - name: Build as Homebrew does
+        run: cargo install --locked --path . --root "$RUNNER_TEMP/brew"
+      - name: Version matches tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: test "$("$RUNNER_TEMP/brew/bin/loch" --version)" = "loch ${TAG#v}"
+
+  release:
+    name: publish GitHub release
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes --latest
