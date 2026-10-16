@@ -16,7 +16,7 @@ O(commits × files).
 Homebrew:
 
 ```bash
-brew install will-wright-eng/tools/loch
+brew install will-wright-eng/tap/loch
 ```
 
 From source (Rust 1.88+):
@@ -98,4 +98,4 @@ The binary embeds DejaVu Sans for chart text, under the Bitstream Vera licence i
 - [tokei](https://github.com/XAMPPRocky/tokei)
 - [plotters](https://github.com/plotters-rs/plotters)
 - [DejaVu fonts](https://dejavu-fonts.github.io/)
-- [will-wright-eng/homebrew-tools](https://github.com/will-wright-eng/homebrew-tools)
+- [will-wright-eng/homebrew-tap](https://github.com/will-wright-eng/homebrew-tap)
